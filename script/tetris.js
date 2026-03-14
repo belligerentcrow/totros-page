@@ -426,4 +426,39 @@ function bestScore(){
     }
 }
 
-/* HELPERS */
+/* Utilities */
+//rotation checker
+function matCells(type, rot, row, col){
+    const m = MATS[type][rot], cells =[];
+    for (let r = 0; r<4;r++)
+        for(let c=0; c<4; c++)
+            if (m[r][c]) cells.push([row+r, col+c]);
+    return cells;
+}
+
+//makes prettier the interface labels
+function keyLabel(code){
+    const map = {
+        ArrowLeft:'← LEFT',
+        ArrowRight: '→ RIGHT',
+        ArrowUp:'↑ UP',
+        ArrowDown:'↓ DOWN',
+        Space:'SPACE',
+        Enter:'ENTER', 
+        Escape:'ESC',
+        Backspace:'BKSP',
+        ShiftLeft:'L.SHIFT', ShiftRight:'R.SHIFT',
+        ControlLeft:'L.CTRL', ControlRight:'R.CTRL',
+        AltLeft:'L.ALT', AltRight:'R.ALT',
+    };
+    if (map[code]) return map[code];
+    if (code.startsWith('Key')) return code.slice(3);
+    if (code.startsWith('Digit')) return code.slice(5);
+    if (code.startsWith('Numpad')) return 'NUM'+code.slice(6);
+    return code;
+}
+
+//calculates dropspeed adjusting for current level
+function dropSpeed(lv){
+    return SPEEDS[Math.min(lv-1, SPEEDS.length -1)];
+}
