@@ -3,6 +3,8 @@
 /* CONSTANTS */
 const COLS = 10, ROWS = 20, CS = 30; // board cell size px
 
+const TYPES = ['I','O','T','S','Z','J','L'];
+
 /*colors of the pieces*/
 const COLORS = {
   I:'#00e5e5', O:'#e5e500', T:'#9900e5',
@@ -426,7 +428,7 @@ function bestScore(){
     }
 }
 
-/* Utilities */
+/* UTILITIES */
 //rotation checker
 function matCells(type, rot, row, col){
     const m = MATS[type][rot], cells =[];
@@ -461,4 +463,169 @@ function keyLabel(code){
 //calculates dropspeed adjusting for current level
 function dropSpeed(lv){
     return SPEEDS[Math.min(lv-1, SPEEDS.length -1)];
+}
+
+/* BAG RANDOMIZER  */
+function shuffle(arr){
+    try {
+        //validate inputs
+        if(!Array.isArray(arr)){
+            console.error('Shuffle: argument should be an array');
+            return [];
+        }
+        
+        //handles empty array
+        if (arr.length === 0){
+            return [];
+        }
+
+        //create a copy to avoid mutating the original
+        const copy = [...arr];
+
+        // used the Fisher-Yates shuffle algorithm
+        for (let i = copy.length -1; i>0; i--){
+            const j = Math.floor(Math.random() * (i+1));
+            [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+    }catch(e){
+        console.error('Failed shuffle, error:', e);
+        return [];
+    }
+}
+
+const FALLBACK_BAG = shuffle([...TYPES]);
+
+function newBag(){
+    try{
+        const shuffled = shuffle([...TYPES]);
+
+        if(!Array.isArray(shuffled) ||shuffled.length === 0){
+            console.error('newBag: shuffled failed, using fallback');
+            return [...FALLBACK_BAG];
+        }
+        return shuffled
+    } catch(e){
+        console.error('Failed newBag function:', e);
+        return [...FALLBACK_BAG]; //fallback?
+    }
+}
+
+function popBag(){
+    try{
+        if (!Array.isArray(bag)||bag.length ===0){
+            if (!Array.isArray(bagNext)){
+                bagNext = newBag();
+            }
+            bag = bagNext;
+            bagNext = newBag();
+        }
+        const piece = bag.shift();
+        if (typeof piece !== 'string' || !TYPES.includes(piece)) {
+            console.error(`popBag: invalid piece: ${piece}`);
+            return getRandomPiece();  //random fallback if pop fails
+        }
+        return piece;
+    } catch (e){
+        console.error('Failed popBag function: ',e);
+        return TYPES[Math.floor(Math.random() * TYPES.length)];
+    }
+}
+
+/* BOARD */
+function makeBoard(){
+    return Array.from({length: ROWS}, () =>new Array(COLS).fill(0));
+}
+
+function isValid(type, rot, row, col) {
+  for (const [r, c] of matCells(type, rot, row, col)) {
+    if (c < 0 || c >= COLS || r >= ROWS) return false;
+    if (r >= 0 && r< ROWS && c>=0 && c < COLS && board[r][c]) return false;
+    if (r >=0 && board[r] != null && board[r][c]) return false;
+  }
+  return true;
+}
+
+/* PIECE MANAGEMENT */
+
+function mkPiece(type) {
+  return { type, rot:0, row:-1, col:3 };
+}
+
+function spawnCur(type){
+    cur = mkPiece(type);
+    lockActive = false;
+    lockAcc=0;
+    lockResets=0;
+    dropAcc=0;
+    if(!isValid(cur.type, cur.rot, cur.row, cur.col)){
+        //gameover
+        state = 'gameover';
+        endGame();
+    }
+}
+
+function ghostRow(){
+    let gr = cur.row;
+    while(isValid(cur.type, cur.rot, gr+1, cur.col)) gr++;
+    return gr;
+}
+
+function tryMove(dr, dc){
+    if (!cur) return false;
+    if (isValid(cur.type, cur.rot, cur.row + dr, cur.col + dc)){
+        cur.row += dr;
+        cur.col += dc;
+        if(dc !== 0) resetLock();
+        return true; //correctly moved
+    }
+    return false;
+}
+
+//1= Clockwise(CW), -1= Counterclockwise(CCW)
+function tryRotate(dir){
+    if (!cur) return false;
+    if (dir !== 1 && dir !== -1) return false;
+    const nr = (cur.rot + (dir === 1 ? 1 :3)) & 3;
+    const key = `${cur.rot}->${nr}`;
+    const kicks = cur.type === 'I' ? KICKS_I[key] : KICKS_JLSTZ[key];
+    if (!kicks) return false;
+    for(const [dr, dc] of kicks){
+        if(isValid(cur.type, nr, cur.row +dr, cur.col +dc)){
+            cur.rot =  nr;
+            cur.row += dr;
+            cur.col += dc;
+            resetLock();
+            return true; //correctly rotated
+        }
+    }
+    return false;
+}
+
+function resetLock(){
+    if (lockActive && lockResets < MAX_LOCK_RESETS){
+        lockAcc = 0;
+        lockResets++;
+    }
+}
+
+function hardDrop(){
+    const gr = ghostRow();
+    score +=(gr-cur.row) *2;
+    cur.row = gr;
+    lock();
+}
+
+function holdPiece(){
+    if(!canHold) return;
+    canHold = false;  //voids holding privilege
+    if(holdType ===null){
+        holdType = cur.type;
+        spawnCur(nextType);
+        nextType = popBag();
+    }else{
+        const tmp = holdType;
+        holdType = cur.type;
+        spawnCur(tmp);
+    }
 }
