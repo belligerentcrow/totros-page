@@ -1,6 +1,6 @@
 'use strict'; // no funny business.
 
-/* constants */
+/* CONSTANTS */
 const COLS = 10, ROWS = 20, CS = 30; // board cell size px
 
 /*colors of the pieces*/
@@ -139,7 +139,7 @@ function getRandomQuote() {
   return QUOTES[Math.floor(Math.random() * QUOTES.length)];
 }
 
-/* Canvas Setup */
+/* CANVAS SETUP */
 // the three boards where the pieces are shown
 // main board, the 'hold' board, and the 'next piece' board
 const bCanvas = document.getElementById('board');
@@ -174,7 +174,7 @@ const uiLevel = document.getElementById('ui-level');
 const uiLines = document.getElementById('ui-lines');
 const uiBest = document.getElementById('ui-best'); 
 
-/* local browser storage */ 
+/* LOCAL BROWSER STORAGE FUNCTIONS - hardened */ 
 
 //hardened load controls function
 function loadControls(){
@@ -229,3 +229,201 @@ function saveControls(){
         console.error('Failed to save controls:',e);
     }
 }
+
+//hardened load highscores function
+
+function loadHS(){
+    try{
+        const s = localStorage.getItem('tet_hs');
+        const parsed = s ? JSON.parse(s) : [];
+
+        //validate if it's an array
+        if (!Array.isArray(parsed)){
+            highScores = [];
+            return;
+        }
+        //stream-like syntax to parse
+        //the filtering and mapping checks for unwanted input
+        highScores = parsed
+        .slice(0,10)
+        .filter(entry => {
+            return (
+                entry &&
+                typeof entry === 'object' &&
+                !Array.isArray(entry) &&
+                typeof entry.name === 'string' &&
+                entry.name.length >0 &&
+                entry.name.length <=10 &&
+                typeof entry.score === 'number' &&
+                isFinite(entry.score) &&
+                entry.score >=0 &&
+                Number.isInteger(entry.score) &&
+                typeof entry.level === 'number' &&
+                isFinite(entry.level) &&
+                entry.level >= 1 &&
+                Number.isInteger(entry.level) &&
+                typeof entry.lines === 'number' &&
+                isFinite(entry.lines) &&
+                entry.lines >=0 &&
+                Number.isInteger(entry.lines) 
+            );
+        })
+        .map(
+            entry=> ({
+                name: entry.name
+                .substring(0,10)
+                .replace(/[<>"'&]/g, '')
+                .trim(),
+                score: Math.max(0, Math.floor(entry.score)),
+                level: Math.max(1, Math.floor(entry.level)),
+                lines: Math.max(0, Math.floor(entry.lines)),
+
+            })
+        );
+    } catch (e){
+        console.error('Failed to load high scores:', e);
+        highScores = [];
+    }
+}
+
+//hardened save highscores function
+function saveHS(){
+    try {
+        if(!Array.isArray(highScores)){
+            console.error('High scores is not an array');
+            return;
+        }
+        const toSave = highScores
+            .slice(0,10)
+            .filter( entry=> {
+                return (
+                    entry &&
+                    typeof entry === 'object' &&
+                    typeof entry.name === 'string' &&
+                    entry.name.length >0 &&
+                    entry.name.length <=10 &&
+                    typeof entry.score === 'number' &&
+                    isFinite(entry.score) &&
+                    entry.score >=0 &&
+                    Number.isInteger(entry.score) &&
+                    typeof entry.level === 'number' &&
+                    isFinite(entry.level) &&
+                    entry.level >=1 &&
+                    Number.isInteger(entry.level) &&
+                    typeof entry.lines === 'number' &&
+                    isFinite(entry.lines) &&
+                    entry.lines >= 0 &&
+                    Number.isInteger(entry.lines)
+                );
+            })
+            .map( entry => ({
+                name: entry.name
+                    .substring(0,10)
+                    .replace(/[<>"'&]/g, '')
+                    .trim(),
+                score: Math.floor(entry.score),
+                level: Math.floor(entry.level),
+                lines: Math.floor(entry.lines),
+            })
+            );
+        localStorage.setItem('tet_hs', JSON.stringify(toSave));
+    } catch (e){
+        console.error('Failed to save high scores:', e);
+    }
+}
+
+//hardened add highscores function
+function addHS(name, sc, lv, ln){
+    try{
+        //validation for the inserted values
+        const validName = (
+            typeof name === 'string' &&
+            name.length <=10
+        ) ? name.toUpperCase().trim() || 'PLAYER' : 'PLAYER';
+
+        const validScore = (
+            typeof sc === 'number' &&
+            isFinite(sc) &&
+            sc >= 0 &&
+            Number.isInteger(sc)
+        ) ? sc : 0;
+
+        const validLevel = (
+            typeof lv === 'number' &&
+            isFinite(lv) &&
+            lv >=1 &&
+            Number.isInteger(lv)
+        ) ? lv : 1;
+
+        const validLines = (
+            typeof ln === 'number' &&
+            isFinite(ln) &&
+            ln >=0 &&
+            Number.isInteger(ln)
+        ) ? ln : 0;
+
+        const entry = {
+            name: validName.substring(0,10),
+            score: validScore,
+            level: validLevel,
+            lines: validLines,
+        };
+
+        highScores.push(entry);
+        highScores.sort((a,b) => b.score - a.score);
+        highScores = highScores.slice(0,10);
+        newHSIdx = highScores.indexOf(entry);
+        saveHS();
+    }catch(e){
+        console.error('Failed to add highscore:', e);
+    }
+}
+
+function isNewHS(score){
+    try {
+        //false if it's not a number. something went wrong
+        if(typeof score !== 'number' || !isFinite(score)){
+            return false;
+        }
+
+        // if it's the first score
+        if(!Array.isArray(highScores)){
+            return true;
+        }
+
+        //there are less than 10 highscores
+        if(highScores.length <10){
+            return true;
+        }
+        
+        const lastScore = highScores[highScores.length -1]?.score;
+        
+        if(typeof lastScore !== 'number' || !isFinite(lastScore)){
+            return true;
+        }
+
+        return score>lastScore;
+    }catch(e){
+        console.error('Failed check if new highscore:', e);
+        return false;
+    }
+}
+
+function bestScore(){
+    try{
+        if(!Array.isArray(highScores) || highScores.length === 0){
+            return 0;
+        }
+        const firstScore = highScores[0]?.score; //optional chaining
+
+        if(typeof firstScore === 'number' && isFinite(firstScore)){
+            return Math.max(0, Math.floor(firstScore));
+        }
+        return 0;
+    }catch(e){
+        console.error('Failed getting best score:', e);
+        return 0;
+    }
+}
+
+/* HELPERS */
