@@ -5,76 +5,110 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>TETRIS</title>
         <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-        <style>
-            *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-
-            body{
-                background:#060c06;
-                min-height:100vh;
-                display:flex;
-                justify-content:center;
-                align-items:center;
-                font-family:'Press Start 2P','Courier New',monospace;
-                color:#33ff33;
-                overflow:hidden;
-            }
-
-            /* CRT lines */
-            body::before{
-                content:'';
-                position:fixed;inset:0;
-                background:repeating-linear-gradient(
-                to bottom,
-                transparent 0px,transparent 3px,
-                rgba(0,0,0,0.25) 3px,rgba(0,0,0,0.25) 4px
-                );
-                pointer-events:none;z-index:200;
-            }
-
-            /* creates the vignette-like tunnel vision */
-            body::after{
-                content:'';
-                position:fixed;inset:0;
-                background: radial-gradient(
-                    ellipse at center, 
-                    transparent 25%,
-                    rgba(0,0,0,0.80) 100%
-                 );
-                pointer-events:none;
-                z-index:199;
-            }
-            
-            /*objects in the wrapper*/
-            #wrapper{
-                display:flex;
-                align-items:flex-start;
-                gap:50px;
-                padding:16px;
-            }
-            
-            /* main board */
-            #board-wrap{
-                position:relative;
-                border:10px solid #1c6e1c;
-                box-shadow:
-                0 0 0 1px #0a350a,
-                0 0 18px rgba(51,255,51,0.35),
-                0 0 50px rgba(51,255,51,0.08),
-                inset 0 0 18px rgba(0,0,0,0.6);
-            }
-
-            /* the image-rendering:pixelated makes the pixels more pixel-y, doesn't smooth them*/ 
-            #board{
-                display:block;
-                image-rendering:pixelated;
-                background:#020902;
-            }
-
-
-
-        </style>
+        <link href="./mytetris/tetris.css" rel="stylesheet">
+        
+        <link rel="icon" href="./mytetris/gamepad.png">
     </head>
     <body>
+
+        <!-- Main Menu -->
+        <div class="ov" id="ov-menu">
+            <div class="pop">
+                <div class="pop-title">TETRIS</div>
+                <div id="random-quote" style="font-size:10px;color:#ffff00;text-align:center;margin-bottom:14px;text-shadow: 0 0 5px #ffff00;"></div>
+                <button class="btn" id="b-start">▶  START GAME</button>
+                <button class="btn" id="b-hs">HIGH SCORES</button>
+                <button class="btn" id="b-ctrl">CONTROLS</button>
+                <button class="btn blue" id="toIndex">BACK TO CROW'S MAIN PAGE</button>
+            </div>
+        </div>
+
+        <!-- Pause menu -->
+        <div class="ov hidden" id="ov-pause">
+            <div class="pop">
+                <div class="pop-title">PAUSED</div>
+                <button class="btn" id="b-resume">▶  RESUME</button>
+                <button class="btn" id="b-ctrl2">CONTROLS</button>
+                <button class="btn red" id="b-quit">QUIT TO MENU</button>
+            </div>
+        </div>
+
+        <!-- Game over menu -->
+        <div class="ov hidden" id="ov-gameover">
+            <div class="pop">
+                <div class="pop-title">GAME OVER</div>
+                <div class="sub-label">SCORE</div>
+                <div class="big-score" id="go-score">0</div>
+                <div class="sub-label" style="margin-bottom: 14px;">LEVEL <span id="go-lv">1</span>&nbsp;·&nbsp;<span id="go-ln">0</span> LINES</div>
+                <div id="hs-entry" style="display: none;">
+                    <div class="hs-notice"> !! NEW HIGH SCORE !!</div>
+                    <div style="font-size:8px;color:#1a7a1a;margin-bottom:3px">ENTER NAME (MAX 10 CHARS):</div>
+                    <input type="text" id="name-inp" maxlength="10" placeholder="PLAYER"
+                    spellcheck="false" autocomplete="off"><br>
+                    <button class="btn" id="b-submit" style="width:auto;display:inline-block;padding:8px 18px;margin-bottom:10px">SUBMIT</button>
+                </div>
+                <button class="btn" id="b-retry">▶  PLAY AGAIN</button>
+                <button class="btn" id="b-gomenu">MAIN MENU</button>
+
+            </div>
+        </div>
+
+        <!-- High Scores menu and table -->
+        <div class="ov hidden" id="ov-hs">
+            <div class="pop">
+                <div class="pop-title" style="font-size:16px">HIGH SCORES</div>
+                <div class="scroll">
+                    <table class="hs-tbl">
+                    <thead><tr><th>#</th><th>NAME</th><th>SCORE</th><th>LV</th><th>LINES</th></tr></thead>
+                        <tbody id="hs-body"></tbody>
+                    </table>
+                </div>
+            <button class="btn red sm" id="b-hs-clear">CLEAR ALL SCORES</button>
+            <button class="btn" id="b-hs-back">BACK</button>
+            </div>
+        </div>
+
+        <!-- Controls menu -->
+        <div class="ov hidden" id="ov-ctrl">
+            <div class="pop">
+                <div class="pop-title" style="font-size:15px">CONTROLS</div>
+                <div class="scroll">
+                    <table class="ctrl-tbl" id="ctrl-tbl"></table>
+                </div>
+                <button class="btn sm" id="b-ctrl-reset">RESET TO DEFAULTS</button>
+                <button class="btn" id="b-ctrl-back">SAVE &amp; BACK</button>
+            </div>
+        </div>
+
+        <!-- ACTUAL GAME INTERFACE -->
+        <div id="wrapper">
+            <!-- Left Panel with Hold Score and Best Score-->
+            <div class="panel">
+                <div class="box"> <div class="label">HOLD</div><canvas class="mini" id="c-hold" width="80" height="64"></canvas></div>
+                <div class="box"> <div class="label">SCORE</div><div class="score" id="ui-score">0</div></div>
+                <div class="box"> <div class="label">BEST</div> <div class="score" id="ui-best" style="color:#ffff00;text-shadow: 0 0 7px #ffff00;">0</div></div>
+            </div>
+
+            <!-- Main Game Board -->
+            <div id="board-wrap">
+                <canvas id="board" width="300" height="600"></canvas>
+            </div>
+
+            <div class="panel">
+                <div class="box"> <div class="label">NEXT</div><canvas class="mini" id="c-next" width="80" height="64"></canvas></div>
+                <div class="box"><div class="label">LEVEL</div><div class="score" id="ui-level">1</div></div>
+                <div class="box"> <div class="label">LINES</div> <div class="score" id="ui-lines">0</div></div>
+                <div class="box" style="font-size:8px;color:#0d420d;line-height:2">
+                    <div style="color:#1a7a1a;margin-bottom:3px;letter-spacing:1px">KEYS</div>
+                    <div>PAUSE: ESC</div>
+                    <div>HOLD: C</div>
+                    <div>HARD DROP: SPC</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Script -->
+        <script src="./mytetris/tetris.js"></script>
 
     </body>
 </html>
