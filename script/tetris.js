@@ -1002,3 +1002,225 @@ function codeToAction(code){
     }
     return null;
 }
+
+/* RENDERING */
+function render(){
+    const c = bCtx;
+    c.clearRect(0, 0, COLS * CS, ROWS * CS);
+
+    //grid
+    c.fillStyle = '#010601';
+    c.fillRect(0,0, COLS * CS, ROWS * CS);
+    c.strokeStyle = '#0a1e0a';
+    c.lineWidth = 0.5;
+    for(let r = 0; r <ROWS; r++){
+        for(let col = 0; col < COLS; col++){
+            c.strokeRect(col * CS, r*CS, CS, CS);
+        }
+    }
+
+    //board cells
+    for(let r = 0; r<ROWS; r++){
+        for(let col = 0; col < COLS; col++){
+            if (board[r][col]) {
+                drawCell(c, col * CS, r * CS, board[r][col], 1);
+            }
+        }
+    }
+
+    //flash animation
+    if (clearing && flashRows.length){
+        const alpha = flashTimer < 100 ? flashTimer / 100 : 1 - (flashTimer - 100) / 100;
+        c.fillStyle = `rgba(255,255,255,${Math.max(0, alpha * 0.85)})`;
+        for(const r of flashRows){
+            c.fillRect(0, r * CS, COLS * CS, CS);
+        }
+    }
+
+    if(state === 'playing' || state === 'paused'){
+        if(!clearing && cur){
+            //ghost piece
+            const gr = ghostRow();
+            const gcells = matCells(cur.type, cur.rot, gr, cur.col);
+            for(const [r, c2] of gcells){
+                if (r>=0){
+                    drawGhost(c, c2 * CS, r*CS, COLORS[cur.type]);
+                }
+            }
+            //current piece
+            const cells = matCells(cur.type, cur.rot, cur.row, cur.col);
+            for(const [r, c2] of cells){
+                if(r>=0){
+                    drawCell(c, c2 * CS, r * CS, COLORS[cur.type], 1);
+                }
+            }
+        }
+    }
+    renderPreview(hCtx, holdType, 80, 64);
+    renderPreview(nCtx, nextType, 80, 64);
+}
+
+function drawCell(c, x, y, color, alpha){
+    c.globalAlpha = alpha;
+    c.fillStyle = color;
+    c.fillRect(x+1, y+1, CS-2, CS-2);
+    c.fillStyle = 'rgba(255,255,255,0.25)';
+    c.fillRect(x+1, y+1, CS-2, 4);
+    c.fillRect(x+1, y+1, 4, CS-2);
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    c.fillRect(x+1, y+CS-5, CS-2, 4);
+    c.fillRect(x+CS-5, y+1, 4, CS-2);
+    c.globalAlpha =1;
+}
+
+function drawGhost(c, x, y, color){
+    c.globalAlpha = 0.22;
+    c.strokeStyle = color;
+    c.lineWidth = 1.5;
+    c.strokeRect(x+2, y+2, CS-4, CS-4);
+    c.globalAlpha = 1;
+}
+
+function renderPreview(ctx, type, w, h){
+    ctx.fillStyle = '#01060';
+    ctx.fillRect(0,0,w,h);
+    if(!type) {
+        return;
+    }
+    const cells = matCells(type, 0, 0, 0);
+
+    let minR = 4;
+    let maxR = 0;
+    let minC = 4;
+    let maxC = 0;
+    
+    for(const [r, col] of cells){
+        minR = Math.min(minR, r);
+        maxR = Math.max(maxR, r);
+        minC = Math.min(minC, col);
+        maxC = Math.max(maxC, col);
+    }
+
+    const pw = (maxC - minC + 1), ph = (maxR - minR +1); 
+    const cs = Math.min(Math.floor(w/5), Math.floor(h/5), 18);
+    const ox = Math.floor((w -pw *cs)/2) - minC * cs;
+    const oy = Math.floor((h - ph * cs)/2) - minR * cs;
+
+    for (const [r, col] of cells){
+        const x = ox + col * cs, y = oy + r *cs;
+        ctx.fillStyle = COLORS[type];
+        ctx.fillRect(x+1, y+1, cs-2, cs-2);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(x+1, y+1, cs-2, 3);
+        ctx.fillRect(x+1, y+1, 3, cs-2);
+        ctx.fillStyle = 'rgba(0, 0, 0,0.3)';
+        ctx.fillRect(x+1, y+cs-4, cs-2, 3);
+        ctx.fillRect(x+cs-4, y+1,3, cs-2);
+    }
+}
+
+//DOM update
+function updateUI(){
+    uiScore.textContent = score;
+    uiLevel.textContent = level;
+    uiLines.textContent = lines;
+    uiBest.textContent = Math.max(score, bestScore());
+}
+
+/* OVERLAY MANAGEMENT */ 
+
+const OVS = ['ov-menu', 'ov-pause', 'ov-gameover', 'ov-hs', 'ov-ctrl']
+
+function showOnly(id){
+    OVS.forEach( o => {
+        const el = document.getElementById(o);
+        if(el){
+            el.classList.toggle('hidden', o !== id);
+        }
+    });
+}
+
+/* HIGHSCORES */
+function renderHSTable(highlightIdx = -1){
+    const tb = document.getElementById('hs-body');
+    tb.innerHTML = '';
+    if (highScores.length ===0){
+        tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#1a7a1a;padding:12px 0">NO SCORES YET</td></tr>';
+        return;
+    }
+    highScores.forEach((e,i) =>{
+        const tr = document.createElement('tr');
+        if(i === highlightIdx){
+            tr.classList.add('new-entry');
+        }
+        [i+1, e.name, e.score, e.level, e.lines].forEach(val => {
+            const td = document.createElement('td');
+            td.textContent = val;
+            tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+    });
+}
+
+/* CONTROLS */
+function renderCtrlTable(){
+    const tbl = document.getElementById('ctrl-tbl');
+    tbl.innerHTML = '';
+    for(const [action, label] of Object.entries(CTRL_LABELS)){
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td');
+        td1.textContent = label;
+        const td2 = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'keybtn';
+        btn.id = 'kb-' + action;
+        btn.textContent = keyLabel(controls[action]);
+        btn.onclick = () => startListening(action);
+        td2.appendChild(btn);
+        tr.appendChild(td1);
+        tr.appendChild(td2);
+        tbl.appendChild(tr);
+    }
+}
+
+function startListening(action){
+    if (ctrlListening) {
+        stopListening();
+    }
+    ctrlListening = action;
+    const btn = document.getElementById('kb-'+action);
+    if(btn){
+        btn.classList.add('listening');
+        btn.textContent = 'PRESS KEY...';
+    }
+}
+
+function stopListening(){
+    if(!ctrlListening){
+        return;
+    }
+    const btn = document.getElementById('kb-'+ctrlListening);
+    if (btn){
+        btn.classList.remove('listening');
+        btn.textContent = keyLabel(controls[ctrlListening]);
+    }
+    ctrlListening = null;
+}
+
+function bindKey(code){
+    if(!ctrlListening){
+        return;
+    }
+    for(const [a,k] of Object.entries(controls)){
+        if(k=== code && a !== ctrlListening){
+            controls[a] = controls[ctrlListening];
+            const ob = document.getElementById('kb-' + a);
+            if (ob) {
+                ob.textContent = keyLabel(controls[a]);
+            }
+        }
+    }
+    controls[ctrlListening] = code;
+    stopListening();
+}
+
