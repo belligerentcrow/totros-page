@@ -96,6 +96,11 @@ const LINE_PTS = [0,40,100,300,1200];
 const DAS_MS = 170, ARR_MS = 50, LOCK_DELAY_MS = 500;
 const MAX_LOCK_RESETS = 15;
 
+const SOFTDROP_DIVISOR = 20;
+const SOFTDROP_FLOOR_MS = 50;
+
+const WATCHDOG_TIMEOUT_MS = 2000;
+
 // Default controls (changeable in the menu)
 const DEF_CTRL = {
   moveLeft:'ArrowLeft', moveRight:'ArrowRight',
@@ -142,6 +147,7 @@ function getRandomQuote() {
 }
 
 /* CANVAS SETUP */
+
 // the three boards where the pieces are shown
 // main board, the 'hold' board, and the 'next piece' board
 const bCanvas = document.getElementById('board');
@@ -151,7 +157,8 @@ const hCtx    = hCanvas.getContext('2d');
 const nCanvas = document.getElementById('c-next');
 const nCtx    = nCanvas.getContext('2d');
 
-/* States */
+/* STATES */
+
 let board, cur, nextType, holdType, canHold;
 let score, lines, level;
 let bag, bagNext;
@@ -170,7 +177,7 @@ let controls, highScores;
 let newHSIdx = -1;
 let ctrlListening = null; //action being rebound
 
-//Draw / update interface elements and scores
+//UI elements - Draw / update interface elements and scores
 const uiScore = document.getElementById('ui-score');
 const uiLevel = document.getElementById('ui-level');
 const uiLines = document.getElementById('ui-lines');
@@ -218,7 +225,7 @@ function saveControls(){
         }
         //create clean object
         const toSave = {};
-        for (const [k,v] of Object.entries(DEF_CTRL)){
+        for (const [k] of Object.entries(DEF_CTRL)){
             if (typeof controls[k] === 'string' && controls[k].length <64 && VALID_KEYS.has(controls[k])){
                 toSave[k] = controls[k];
             }else{
@@ -228,7 +235,7 @@ function saveControls(){
         }
         localStorage.setItem('tet_ctrl', JSON.stringify(toSave));
     }catch (e) {
-        console.error('Failed to save controls:',e);
+        console.error('Failed to save controls:', e);
     }
 }
 
@@ -248,8 +255,7 @@ function loadHS(){
         //the filtering and mapping checks for unwanted input
         highScores = parsed
         .slice(0,10)
-        .filter(entry => {
-            return (
+        .filter(entry => (
                 entry &&
                 typeof entry === 'object' &&
                 !Array.isArray(entry) &&
@@ -268,20 +274,17 @@ function loadHS(){
                 isFinite(entry.lines) &&
                 entry.lines >=0 &&
                 Number.isInteger(entry.lines) 
-            );
-        })
-        .map(
-            entry=> ({
-                name: entry.name
-                .substring(0,10)
-                .replace(/[<>"'&]/g, '')
-                .trim(),
-                score: Math.max(0, Math.floor(entry.score)),
-                level: Math.max(1, Math.floor(entry.level)),
-                lines: Math.max(0, Math.floor(entry.lines)),
-
-            })
-        );
+            ))
+            .map(
+                entry=> ({
+                    name: entry.name
+                    .substring(0,10)
+                    .replace(/[<>"'&]/g, '')
+                    .trim(),
+                    score: Math.max(0, Math.floor(entry.score)),
+                    level: Math.max(1, Math.floor(entry.level)),
+                    lines: Math.max(0, Math.floor(entry.lines)),
+            }));
     } catch (e){
         console.error('Failed to load high scores:', e);
         highScores = [];
@@ -297,8 +300,7 @@ function saveHS(){
         }
         const toSave = highScores
             .slice(0,10)
-            .filter( entry=> {
-                return (
+            .filter( entry=> (
                     entry &&
                     typeof entry === 'object' &&
                     typeof entry.name === 'string' &&
@@ -316,8 +318,7 @@ function saveHS(){
                     isFinite(entry.lines) &&
                     entry.lines >= 0 &&
                     Number.isInteger(entry.lines)
-                );
-            })
+            ))
             .map( entry => ({
                 name: entry.name
                     .substring(0,10)
@@ -327,7 +328,7 @@ function saveHS(){
                 level: Math.floor(entry.level),
                 lines: Math.floor(entry.lines),
             })
-            );
+        );
         localStorage.setItem('tet_hs', JSON.stringify(toSave));
     } catch (e){
         console.error('Failed to save high scores:', e);
@@ -431,8 +432,8 @@ function bestScore(){
 /* UTILITIES */
 //rotation checker
 function matCells(type, rot, row, col){
-    const m = MATS[type][rot], cells =[];
-    for (let r = 0; r<4;r++)
+    const m = MATS[type][rot], cells = [];
+    for (let r = 0; r<4; r++)
         for(let c=0; c<4; c++)
             if (m[r][c]) cells.push([row+r, col+c]);
     return cells;
@@ -523,7 +524,7 @@ function popBag(){
         const piece = bag.shift();
         if (typeof piece !== 'string' || !TYPES.includes(piece)) {
             console.error(`popBag: invalid piece: ${piece}`);
-            return getRandomPiece();  //random fallback if pop fails
+            return TYPES[Math.floor(Math.random() * TYPES.length)];  //random fallback if pop fails
         }
         return piece;
     } catch (e){
@@ -540,8 +541,8 @@ function makeBoard(){
 function isValid(type, rot, row, col) {
   for (const [r, c] of matCells(type, rot, row, col)) {
     if (c < 0 || c >= COLS || r >= ROWS) return false;
-    if (r >= 0 && r< ROWS && c>=0 && c < COLS && board[r][c]) return false;
-    if (r >=0 && board[r] != null && board[r][c]) return false;
+    if (r >= 0 && board[r][c]) return false;
+    //if (r >=0 && board[r] != null && board[r][c]) return false; //redundant
   }
   return true;
 }
@@ -552,12 +553,16 @@ function mkPiece(type) {
   return { type, rot:0, row:-1, col:3 };
 }
 
+let justSpawned =false;
+
 function spawnCur(type){
     cur = mkPiece(type);
     lockActive = false;
     lockAcc=0;
     lockResets=0;
     dropAcc=0;
+    delete keysHeld['softDrop']; //keysHeld = {};
+    justSpawned = true; // ' '
     if(!isValid(cur.type, cur.rot, cur.row, cur.col)){
         //gameover
         state = 'gameover';
@@ -583,10 +588,10 @@ function tryMove(dr, dc){
 }
 
 //1= Clockwise(CW), -1= Counterclockwise(CCW)
-function tryRotate(dir){
+function tryRotate(dir){                                     
     if (!cur) return false;
     if (dir !== 1 && dir !== -1) return false;
-    const nr = (cur.rot + (dir === 1 ? 1 :3)) & 3;
+    const nr = (cur.rot + (dir === 1 ? 1 : 3)) & 3;
     const key = `${cur.rot}->${nr}`;
     const kicks = cur.type === 'I' ? KICKS_I[key] : KICKS_JLSTZ[key];
     if (!kicks) return false;
@@ -628,4 +633,372 @@ function holdPiece(){
         holdType = cur.type;
         spawnCur(tmp);
     }
+}
+
+/* Lock and line-clearing behaviour */
+
+function lock(){
+    if (!cur) return;
+    const cells = matCells(cur.type, cur.rot, cur.row, cur.col);
+    //check top-out for game over 
+    const topOut = cells.every(([r])=> r<0); // could be 'some' if the logic was even one part out = gameover
+    if (topOut) {
+        state = 'gameover'; 
+        endGame();
+        return;
+    }
+    for(const [r,c] of cells){
+        if (r>=0 && r < ROWS && c>=0 && c < COLS){
+            board[r][c] = COLORS[cur.type];
+        }
+    }
+    cur = null; // prevents further interaction with place stuck on board 
+    //find full rows
+    const full = [];
+    for (let r=0; r < ROWS; r++){
+        if (board[r].every(c => c !== 0)) full.push(r);
+    }
+
+    if(full.length >0){
+        clearing = true;
+        flashRows = full;
+        pendingClearCount = full.length;
+        flashTimer = 0;
+        lockActive = false; 
+        lockAcc=0; //prevents a pending lock mid-flash
+    }else{
+        afterClear(0);
+    }
+}
+
+function afterClear(n){
+    const rowsToRemove = flashRows.slice();
+    clearing = false;
+    flashRows = [];
+    if (n >0){
+        //remove all full rows bottom to top
+        for(const r of rowsToRemove.slice().reverse()){
+            board.splice(r,1);
+        }
+        //add exactly n empty rows at the top
+        for(let i =0; i<n;i++){
+            board.unshift(new Array(COLS).fill(0));
+        }
+        lines += n;
+        score += (LINE_PTS[Math.min(n, 4)] ??0) * level;
+        level = Math.floor(lines/10) + 1;
+    }
+    canHold = true;
+    lastT = null; 
+    spawnCur(nextType);
+    nextType = popBag();
+    updateUI();
+
+    scheduleLoop(); //ensures loop is alive, recovery point in case something goes wrong
+}
+
+
+/* LOOP WATCHDOG (woof)*/
+
+let loopGeneration = 0;
+let watchdogTimer = null;
+
+function armWatchdog(){
+    if(watchdogTimer !== null){
+        clearTimeout(watchdogTimer);
+    }
+    const gen = loopGeneration;
+    watchdogTimer = setTimeout(() =>{
+        watchdogTimer = null;
+        if (state !== 'playing'){ //not currently playing
+            return;
+        }
+        if(loopGeneration!== gen){ //frame already fired, all good
+            return;
+        }
+        //if we get here the game is stalled. CPR NEEDED
+        console.warn('Tetris loop watchdog triggered - 1 2 3 !CLEAR! revive raf chain');
+        lastT = null;
+        raf = requestAnimationFrame(loop);
+    }, WATCHDOG_TIMEOUT_MS);
+}
+
+function disarmWatchdog(){
+    if(watchdogTimer !== null){
+        clearTimeout(watchdogTimer);
+    }
+    watchdogTimer = null;
+}
+
+//scheduler, piece which schedules the next frame. 
+//ok if called more than once, cancelAnimationFrame() handles it
+function scheduleLoop(){
+    if(state !== 'playing'){
+        return;
+    }
+    if(raf){
+        cancelAnimationFrame(raf);
+    }
+    raf = requestAnimationFrame(loop);
+    armWatchdog();
+}
+
+
+/* GAME CYCLE */
+
+function startGame(){
+    board = makeBoard();
+    bag = newBag();
+    bagNext = newBag();
+    score = 0;
+    lines = 0;
+    level = 1;
+    holdType = null;
+    canHold = true;
+    flashRows = [];
+    flashTimer = 0;
+    pendingClearCount = 0;
+    clearing = false;
+    keysHeld = {};
+    dropAcc = 0;
+    lockAcc = 0;
+    lockActive = false;
+    lockResets = 0;
+    loopGeneration = 0;
+    lastT = null;
+
+    spawnCur(popBag());
+    nextType = popBag();
+
+    state = 'playing';
+    updateUI();
+    showOnly(null);
+    disarmWatchdog();
+    if(raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(loop);
+    armWatchdog();
+}
+
+function pauseGame(){
+    if (state!== 'playing') return;
+    state = 'paused';
+    disarmWatchdog();
+    showOnly('ov-pause');
+}
+
+function resumeGame(){
+    if(state !== 'paused') return;
+    state = 'playing';
+    lastT=null;
+    showOnly(null);
+    disarmWatchdog();
+    raf = requestAnimationFrame(loop);
+    armWatchdog();
+}
+
+function endGame(){
+    disarmWatchdog();
+    if (raf) cancelAnimationFrame(raf);
+    raf = null;
+    state = 'gameover';
+
+    document.getElementById('go-score').textContent = score;
+    document.getElementById('go-lv').textContent = level;
+    document.getElementById('go-ln').textContent = lines;
+
+    const entry = document.getElementById('hs-entry');
+    if(isNewHS(score) && score>0){
+        entry.style.display = '';
+        document.getElementById('name-inp').value = '';
+        document.getElementById('name-inp').focus();
+    }else{
+        entry.style.display = 'none';
+    }
+    showOnly('ov-gameover');
+}
+
+/* Main Loop */ 
+let lastT = null;
+
+function loop(t){
+    raf = null;
+    if (state !== 'playing') return;
+
+    loopGeneration++; //notifies the watchdog that the game is live
+
+    if (lastT === null) lastT = t;
+    const dt = Math.min(t - lastT, 100);
+    lastT = t;
+
+    if(!clearing){
+        // one-frame spawn grace period
+
+        if (justSpawned) { 
+            justSpawned = false; 
+            render(); 
+            scheduleLoop();
+            return; 
+        }
+
+        //delay and pressdown for held keys (DAS / ARR)
+        processDAS(t);
+
+        /* GRAVITY handler */ 
+        //Softdrop
+        if (keysHeld['softDrop']){
+            const sdt = Math.max(dropSpeed(level) / SOFTDROP_DIVISOR, SOFTDROP_FLOOR_MS); //dropSpeed(level) /3;
+            dropAcc += dt;
+            let softRows = 0;
+            while (dropAcc >= sdt){
+                dropAcc -= sdt;
+                if(tryMove (1,0)) {
+                    softRows++;
+                }
+                else{
+                    if(!lockActive && cur.row >=0 ){
+                        lockActive =true;
+                        lockAcc = 0;
+                    } 
+                    break;
+                }
+            }
+            score += softRows;
+        }else{
+
+        //normal gravity
+            dropAcc +=dt;
+            const spd = dropSpeed(level);
+            while (dropAcc >=spd){
+                dropAcc -= spd;
+                if (!tryMove(1,0)){
+                    if(!lockActive && cur.row >=0){
+                        lockActive=true;
+                        lockAcc=0;
+                    }
+                    break;
+                }
+            }
+        }
+
+        //lock delay
+        if (lockActive){
+            lockAcc += dt;
+            if (lockAcc >= LOCK_DELAY_MS) {
+                lock();
+                if (!clearing) {return;}
+                
+            return;
+            }
+        }
+    } else {
+        // line clear flash animation
+        flashTimer += dt;
+        if (flashTimer >=200) {
+            afterClear(pendingClearCount);
+            return;
+        }
+    }
+    render();
+    scheduleLoop();
+}
+
+/* Visibility Change - prevents dt spike on tab restore */
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden'){
+        disarmWatchdog();
+    }else{
+        lastT = null;
+        if(state === 'playing'){
+            if(!raf){
+                raf = requestAnimationFrame(loop);
+            }
+            armWatchdog();
+        }
+    }
+});
+
+
+
+
+
+function processDAS(now){
+    for(const [action, st] of Object.entries(keysHeld)) {
+        if (action === 'softDrop') continue; //never handled separetely! Check! TODO! 
+        const elapsed = now - st.t0; 
+        if(elapsed >= DAS_MS){
+            if(st.lastRep === null || now - st.lastRep>= ARR_MS){
+                st.lastRep = now;
+                doAction(action);
+            } 
+        }
+    }
+}
+
+function doAction(action){
+    if(clearing || state !== 'playing') return;
+    switch(action){
+        case 'moveLeft' : tryMove(0,-1); break;
+        case 'moveRight': tryMove(0,1); break;
+        case 'softDrop': if (tryMove(1,0)) score +=1; break;
+        case 'rotateCW': tryRotate(1); break;
+        case 'rotateCCW': tryRotate(-1); break; 
+    }
+}
+
+/* INPUT */
+
+document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') {
+        return;
+    }
+    if (ctrlListening){
+        bindKey(e.code);
+        return;
+    }
+    e.preventDefault && e.preventDefault();
+
+    const action = codeToAction(e.code);
+    if(!action) {
+        return;
+    }
+
+    if (action ==='pause'){
+        if (state ==='playing'){
+            pauseGame();
+        }else if(state === 'paused'){
+            resumeGame();
+        }
+        return;
+    }
+    if (action === 'hardDrop' && state ==='playing' && !clearing){
+        hardDrop();
+        updateUI();
+        return;
+    }
+    if (action ==='hold' && state ==='playing' && !clearing){
+        holdPiece();
+        updateUI();
+        return;
+    }
+
+    const das = ['moveLeft', 'moveRight', 'softDrop', 'rotateCW', 'rotateCCW'];
+    if (das.includes(action) && state === 'playing'){
+        if(!keysHeld[action]){
+            keysHeld[action] = {t0:performance.now(), lastRep: null};
+            doAction(action);
+        }
+    }
+});
+
+document.addEventListener('keyup', e =>{
+    const action = codeToAction(e.code);
+    if (action) delete keysHeld[action];
+});
+
+function codeToAction(code){
+    for (const [a,k] of Object.entries(controls)){
+        if (k=== code) return a;
+    }
+    return null;
 }
