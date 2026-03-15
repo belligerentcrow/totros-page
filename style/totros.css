@@ -207,7 +207,7 @@ canvas.mini{
 /* scores */
 .big-score{
     font-size:17px;
-    color:ffff00;
+    color:#ffff00;
     text-shadow: 0 0 12px #ffff00;
     margin:5px 0;
 }
