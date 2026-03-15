@@ -886,8 +886,10 @@ function loop(t){
             lockAcc += dt;
             if (lockAcc >= LOCK_DELAY_MS) {
                 lock();
-                if (!clearing) {return;}
-                
+                //if (!clearing) {return;}
+                if(clearing){
+                  scheduleLoop();
+                }
             return;
             }
         }
