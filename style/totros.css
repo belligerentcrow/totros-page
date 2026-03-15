@@ -129,7 +129,7 @@ canvas.mini{
         pointer-events:none; /* click pass through it*/ 
 }
 
-.pop-title{ /* "T E T R I S" ! */
+.pop-title{ /* "T O T R O S" ! */
         font-size:30px;
         color:#33ff33;
         text-shadow:0 0 14px #33ff33,0 0 30px rgba(51,255,51,0.5);

@@ -134,11 +134,12 @@ const QUOTES = [
   "Watch out for those empty block spaces",
   "Sound will be added, eventually...",
   "1988 edition... -ish...",
-  "I'll watch the Tetris movie one of these days is2g",
+  "I'll watch the Totros movie one of these days is2g",
   "Stack wisely",
-  "Gravity ftw",
-  "Tu eri per meeee il pezzo del tetris longilineooooo",
-  "There Are Many Benefits To Being A Programmer"
+  "god i hope i won't get sued for this",
+  "Tu eri per meeee il pezzo del totros longilineooooo woo-ooh",
+  "There Are Many Benefits To Being A Programmer",
+  "The soft drop mechanics are still a work in progress",
 ];
 
 /* function to pick a quote, putting it here for... topic affinity*/
@@ -717,7 +718,7 @@ function armWatchdog(){
             return;
         }
         //if we get here the game is stalled. CPR NEEDED
-        console.warn('Tetris loop watchdog triggered - 1 2 3 !CLEAR! revive raf chain');
+        console.warn('Totros loop watchdog triggered - 1 2 3 !CLEAR! revive raf chain');
         lastT = null;
         raf = requestAnimationFrame(loop);
     }, WATCHDOG_TIMEOUT_MS);
@@ -1223,4 +1224,89 @@ function bindKey(code){
     controls[ctrlListening] = code;
     stopListening();
 }
+
+/* BUTTON WIRING */
+
+function wire(id, fn){
+    const el = document.getElementById(id);
+    if (el) {
+        el.onclick = fn;
+    }
+}
+
+//starts the game
+wire('b-start', () => {
+    lastT = null;
+    startGame();
+});
+
+//highscores menu
+wire('b-hs', () => {
+    renderHSTable();
+    showOnly('ov-hs');
+});
+
+//control menu
+wire('b-ctrl', () => {
+    renderCtrlTable();
+    showOnly('ov-ctrl');
+});
+
+//resume game from paused
+wire('b-resume', () =>{
+    lastT = null;
+    resumeGame();
+});
+
+//control menu and pause
+wire('b-ctrl2', () =>{
+    renderCtrlTable();
+    document.getElementById('b-ctrl-back').onclick = () => {
+        saveControls();
+        showOnly('ov-pause');
+    };
+    showOnly('ov-ctrl');
+});
+
+//quit the game
+wire('b-quit', () => {
+    state = 'menu';
+    disarmWatchdog();
+    showOnly('ov-menu');
+    render();
+});
+
+//game over
+wire('b-submit', () => {
+    const name = document.getElementById('name-inp').value;
+    addHS(name, score, level, lines);
+    document.getElementById('hs-entry').style.display = 'none';
+    uiBest.textContent = bestScore();
+});
+
+//restart game - retry
+wire('b-retry', () =>{
+    lastT = null;
+    startGame();
+});
+
+//main menu again
+wire('b-gomenu', () => {
+    state = 'menu';
+    disarmWatchdog();
+    showOnly('ov-menu');
+});
+
+//clear all highscores
+wire('b-hs-clear', ()=>{
+    if(confirm('Clear all high scores?')){
+        highScores = [];
+        saveHS();
+        renderHSTable();
+        uiBest.textContent = 0;
+    }
+});
+
+//back to menu from highscores
+wire('b-hs-back', () => showOnly('ov-menu'));
 
