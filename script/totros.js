@@ -1083,7 +1083,7 @@ function drawGhost(c, x, y, color){
 }
 
 function renderPreview(ctx, type, w, h){
-    ctx.fillStyle = '#01060';
+    ctx.fillStyle = '#010601';
     ctx.fillRect(0,0,w,h);
     if(!type) {
         return;
@@ -1310,3 +1310,49 @@ wire('b-hs-clear', ()=>{
 //back to menu from highscores
 wire('b-hs-back', () => showOnly('ov-menu'));
 
+//reset controls to default
+wire('b-ctrl-reset', ()=>{
+    controls = {...DEF_CTRL};
+    renderCtrlTable();
+});
+
+wire('b-ctrl-back', () => {
+    stopListening();
+    saveControls();
+    showOnly('ov-menu');
+
+    document.getElementById('random-quote').textContent = getRandomQuote();
+    const hintBox = document.querySelector('.panel:last-child .box:last-child');
+
+    hintBox.innerHTML = '';
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl';
+    lbl.textContent = 'KEYS';
+    hintBox.appendChild(lbl);
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'font-size:7px;color:#0d420d;line-height:2';
+    [['PAUSE',controls.pause], ['HOLD', controls.hold], ['HARD DROP', controls.hardDrop]].forEach(([name,code])=>{
+        const d = document.createElement('div');
+        d.textContent = `${name}: ${keyLabel(code)}`;
+        wrap.appendChild(d);
+    });
+    hintBox.appendChild(wrap);
+});
+
+//enter key submits score
+document.getElementById('name-inp').addEventListener('keydown', e =>{
+    if(e.code ==='Enter') {
+        document.getElementById('b-submit').click();
+    }
+});
+
+//INIT!
+loadControls();
+loadHS();
+uiBest.textContent = bestScore();
+state = 'menu';
+board = makeBoard();
+render();
+showOnly('ov-menu');
+document.getElementById('random-quote').textContent = getRandomQuote();
